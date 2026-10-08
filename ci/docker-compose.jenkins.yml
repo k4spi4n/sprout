@@ -1,0 +1,27 @@
+# Jenkins running in Docker. Start with:
+#   docker compose -f ci/docker-compose.jenkins.yml --env-file ci/.env up -d --build
+name: sprout-jenkins
+
+services:
+  jenkins:
+    build: ./jenkins
+    image: sprout-jenkins:local
+    ports:
+      - "${JENKINS_PORT:-8081}:8080"
+    # Lets the non-root "jenkins" user use the host Docker socket.
+    # Docker Desktop: 0 (root group). Linux: run `getent group docker | cut -d: -f3`.
+    group_add:
+      - "${DOCKER_GID:-0}"
+    environment:
+      JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:-admin}
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-admin}
+      JENKINS_URL: http://localhost:${JENKINS_PORT:-8081}/
+      SPROUT_REPO_URL: ${SPROUT_REPO_URL:?set SPROUT_REPO_URL in ci/.env}
+      SPROUT_DB_PASSWORD: ${SPROUT_DB_PASSWORD:-sprout}
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+volumes:
+  jenkins_home:

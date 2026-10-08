@@ -1,0 +1,43 @@
+# Production-style stack. Jenkins builds the images and runs:
+#   IMAGE_TAG=<build number> docker compose up -d --no-build
+# Locally you can just run: docker compose up --build
+name: sprout
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sprout}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sprout}
+      POSTGRES_DB: ${POSTGRES_DB:-sprout}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    image: sprout-backend:${IMAGE_TAG:-latest}
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sprout}:${POSTGRES_PASSWORD:-sprout}@db:5432/${POSTGRES_DB:-sprout}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    image: sprout-frontend:${IMAGE_TAG:-latest}
+    build: ./frontend
+    ports:
+      - "${APP_PORT:-8090}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
