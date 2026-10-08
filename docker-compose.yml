@@ -17,7 +17,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    restart: unless-stopped
+    restart: "no"   # on-demand: start with `docker compose up -d`
 
   backend:
     image: sprout-backend:${IMAGE_TAG:-latest}
@@ -27,7 +27,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    restart: unless-stopped
+    restart: "no"   # on-demand: start with `docker compose up -d`
 
   frontend:
     image: sprout-frontend:${IMAGE_TAG:-latest}
@@ -37,7 +37,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    restart: unless-stopped
+    restart: "no"   # on-demand: start with `docker compose up -d`
 
 volumes:
   pgdata:

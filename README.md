@@ -70,6 +70,19 @@ cd frontend && npm test
    The **sprout** job already exists (created by `ci/jenkins/casc.yaml`). Click **Build Now** for the first run.
    After that, Jenkins polls GitHub every 2 minutes and builds every new commit on `main`.
 
+### Start / stop on demand
+Nothing starts automatically when Docker starts (`restart: "no"`). Start things only when you need them:
+```bash
+# Jenkins
+docker compose -f ci/docker-compose.jenkins.yml --env-file ci/.env up -d     # start
+docker compose -f ci/docker-compose.jenkins.yml --env-file ci/.env stop      # stop (keeps jobs/history)
+
+# Deployed app (the last image Jenkins built)
+docker compose up -d --no-build      # start
+docker compose stop                  # stop (keeps the database)
+```
+Jenkins polls GitHub only while it's running. Commits pushed while it's stopped get built on its next poll after you start it.
+
 ### Pipeline stages
 
 | Stage | What happens |
