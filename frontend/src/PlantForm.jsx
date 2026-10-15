@@ -33,19 +33,19 @@ export default function PlantForm({ onSubmit }) {
       <h2>Add a plant</h2>
       <div className="fields">
         <label>
-          Name
+          <span>Name</span>
           <input required maxLength={80} value={form.name} onChange={update('name')} placeholder="Monty" />
         </label>
         <label>
-          Species
+          <span>Species</span>
           <input maxLength={120} value={form.species} onChange={update('species')} placeholder="Monstera deliciosa" />
         </label>
         <label>
-          Location
+          <span>Location</span>
           <input maxLength={80} value={form.location} onChange={update('location')} placeholder="Living room" />
         </label>
         <label>
-          Water every (days)
+          <span>Water every (days)</span>
           <input type="number" min={1} max={60} required value={form.water_every_days} onChange={update('water_every_days')} />
         </label>
       </div>

@@ -11,7 +11,7 @@ from app.database import Base, engine  # noqa: E402
 from app.main import app  # noqa: E402
 
 
-@pytest.fixture()
+@pytest.fixture
 def client():
     Base.metadata.drop_all(engine)
     with TestClient(app) as c:  # runs lifespan -> create_all

@@ -3,13 +3,12 @@ import os
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session
 
 from . import models  # noqa: F401  (registers tables on Base.metadata)
-from .database import Base, engine, get_db
+from .database import Base, DbSession, engine
 from .routers import plants
 
 log = logging.getLogger("sprout")
@@ -48,7 +47,7 @@ app.include_router(plants.router)
 
 
 @app.get("/api/health", tags=["meta"])
-def health(db: Session = Depends(get_db)):
+def health(db: DbSession):
     db.execute(text("SELECT 1"))
     # APP_BUILD is the Jenkins build number baked into the deployment; the smoke test checks it.
     return {
