@@ -12,6 +12,11 @@ dist/
 # Env / secrets
 .env
 ci/.env
+.env.*
+!.env.example
+.backups/
+.releases/
+*.dump
 
 # Editors / OS
 .vscode/

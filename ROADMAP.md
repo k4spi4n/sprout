@@ -39,10 +39,10 @@ Legend: ✅ done · ⬜ planned
 - ⬜ "Water all due" bulk action
 
 ## v0.6: Hardening
-- ⬜ Alembic migrations (replace `Base.metadata.create_all`)
+- ✅ Alembic migrations, legacy schema adoption, migration readiness checks
 - ⬜ Seasonal adjustment: water less often in winter (per-plant multiplier)
 - ⬜ Plant photos (upload to a Docker volume)
-- ⬜ Push images to a registry (Docker Hub / GHCR) from Jenkins and deploy by tag
+- ✅ Push tested images to Docker Hub; deploy immutable image IDs with backup and verified rollback
 
 ## How to add a feature
 1. Branch off `main`: `git switch -c feat/care-log`

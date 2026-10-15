@@ -3,9 +3,39 @@
 #   Locally:  docker compose up --build        (images become local/sprout-*:latest)
 name: sprout
 
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-backend: &backend
+  image: ${BACKEND_IMAGE:-${IMAGE_NAMESPACE:-local}/sprout-backend:${IMAGE_TAG:-latest}}
+  build:
+    context: ./backend
+    args:
+      APP_BUILD: ${IMAGE_TAG:-local}
+      APP_REVISION: ${APP_REVISION:-unknown}
+  environment: &database
+    POSTGRES_HOST: db
+    POSTGRES_USER: ${POSTGRES_USER:-sprout}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sprout}
+    POSTGRES_DB: ${POSTGRES_DB:-sprout}
+  read_only: true
+  tmpfs:
+    - /tmp:size=32m,mode=1777
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  init: true
+  mem_limit: 256m
+  cpus: 1.0
+  pids_limit: 100
+  logging: *logging
+  networks: [default, data]
+
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-sprout}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sprout}
@@ -18,35 +48,66 @@ services:
       timeout: 3s
       retries: 10
     restart: "no"   # on-demand: start with `docker compose up -d`
+    networks: [data]
+    logging: *logging
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 200
+    security_opt: [no-new-privileges:true]
 
-  backend:
-    image: ${IMAGE_NAMESPACE:-local}/sprout-backend:${IMAGE_TAG:-latest}
-    build:
-      context: ./backend
-      args:
-        APP_BUILD: ${IMAGE_TAG:-local}
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sprout}:${POSTGRES_PASSWORD:-sprout}@db:5432/${POSTGRES_DB:-sprout}
+  migrate:
+    <<: *backend
+    command: [alembic, upgrade, head]
+    healthcheck:
+      disable: true
     depends_on:
       db:
         condition: service_healthy
+    restart: "no"
+
+  backend:
+    <<: *backend
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    stop_grace_period: 30s
     restart: "no"   # on-demand: start with `docker compose up -d`
 
   frontend:
-    image: ${IMAGE_NAMESPACE:-local}/sprout-frontend:${IMAGE_TAG:-latest}
-    build: ./frontend
+    image: ${FRONTEND_IMAGE:-${IMAGE_NAMESPACE:-local}/sprout-frontend:${IMAGE_TAG:-latest}}
+    build:
+      context: ./frontend
+      args:
+        APP_BUILD: ${IMAGE_TAG:-local}
+        APP_REVISION: ${APP_REVISION:-unknown}
     ports:
-      - "${APP_PORT:-8090}:80"
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8090}:8080"
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
       # Checks the whole chain: nginx -> FastAPI -> Postgres
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
       interval: 5s
       timeout: 3s
       retries: 10
     restart: "no"   # on-demand: start with `docker compose up -d`
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    init: true
+    mem_limit: 64m
+    cpus: 0.5
+    pids_limit: 100
+    logging: *logging
+
+networks:
+  data:
+    internal: true
 
 volumes:
   pgdata:

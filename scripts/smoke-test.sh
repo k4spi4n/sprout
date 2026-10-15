@@ -4,6 +4,7 @@
 # Jenkins pipes this into a curl container on the app network:
 #   docker run --rm -i --network sprout_default --entrypoint sh curlimages/curl -s -- http://frontend 42 < scripts/smoke-test.sh
 set -eu
+curl() { command curl --connect-timeout 3 --max-time 10 "$@"; }
 BASE="$1"
 EXPECTED="$2"
 
@@ -20,7 +21,7 @@ until health=$(curl -fsS "$BASE/api/health" 2>/dev/null); do
 done
 echo "$health" | grep -q '"database":"ok"' || fail "database not connected: $health"
 ok "API healthy, database connected"
-echo "$health" | grep -q "\"build\":\"$EXPECTED\"" || fail "expected build $EXPECTED to be live, got: $health"
+echo "$health" | grep -Fq "\"build\":\"$EXPECTED\"" || fail "expected build $EXPECTED to be live, got: $health"
 ok "build $EXPECTED is live"
 
 page=$(curl -fsS "$BASE/") || fail "frontend not reachable"

@@ -1,7 +1,7 @@
 # Jenkins controller with the Docker CLI + Compose plugin and SonarScanner CLI.
 # It talks to the host's Docker daemon through the mounted /var/run/docker.sock
 # ("Docker outside of Docker"), so the pipeline can build images and deploy containers.
-FROM jenkins/jenkins:lts-jdk21
+FROM jenkins/jenkins:lts-jdk21@sha256:a660310e39ade10631f774bacd5219de767dfd08947ea5c32a739b5e5bb382c1
 
 USER root
 RUN apt-get update \
@@ -17,8 +17,10 @@ RUN apt-get update \
 
 # SonarScanner CLI (uses the image's JDK 21)
 ARG SONAR_SCANNER_VERSION=7.2.0.5079
+ARG SONAR_SCANNER_SHA256=30d80b37c8f4be1254b6c43ec8c64291798d97a710c28475958b5e2f10809fe1
 RUN curl -fsSL -o /tmp/sonar-scanner.zip \
       "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}.zip" \
+ && echo "${SONAR_SCANNER_SHA256}  /tmp/sonar-scanner.zip" | sha256sum -c - \
  && unzip -q /tmp/sonar-scanner.zip -d /opt \
  && mv "/opt/sonar-scanner-${SONAR_SCANNER_VERSION}" /opt/sonar-scanner \
  && rm /tmp/sonar-scanner.zip
@@ -27,7 +29,7 @@ USER jenkins
 
 # Plugins + Configuration as Code (admin user, credentials and the "sprout" pipeline job)
 COPY --chown=jenkins:jenkins plugins.txt /usr/share/jenkins/ref/plugins.txt
-RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
+RUN jenkins-plugin-cli --latest=false --plugin-file /usr/share/jenkins/ref/plugins.txt
 COPY --chown=jenkins:jenkins casc.yaml /usr/share/jenkins/casc.yaml
 
 ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false" \

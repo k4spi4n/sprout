@@ -7,10 +7,10 @@ services:
     ports: !reset []   # don't clash with the deployed app on :8090
 
   e2e:
-    image: sprout-e2e:ci
+    image: sprout-e2e:${IMAGE_TAG:-local}
     build: ./e2e
     environment:
-      BASE_URL: http://frontend
+      BASE_URL: http://frontend:8080
       EXPECTED_BUILD: ${IMAGE_TAG:-local}
     depends_on:
       frontend:

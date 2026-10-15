@@ -6,7 +6,7 @@ jenkins:
       allowsSignup: false
       users:
         - id: "${JENKINS_ADMIN_ID:-admin}"
-          password: "${JENKINS_ADMIN_PASSWORD:-admin}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
   authorizationStrategy:
     loggedInUsersCanDoAnything:
       allowAnonymousRead: false
@@ -21,6 +21,8 @@ jenkins:
           # Docker Hub namespace for images. Empty = images stay local and the Push stage is skipped.
           - key: DOCKERHUB_USER
             value: "${DOCKERHUB_USER:-}"
+          - key: SPROUT_SCANNER_HOME
+            value: "/opt/sonar-scanner"
 
 credentials:
   system:
@@ -30,21 +32,25 @@ credentials:
               scope: GLOBAL
               id: sprout-db-password
               description: "Postgres password used by the deployed Sprout stack"
-              secret: "${SPROUT_DB_PASSWORD:-sprout}"
+              secret: "${SPROUT_DB_PASSWORD}"
+          - string:
+              scope: GLOBAL
+              id: sonar-token
+              description: "Project analysis token for the limited SonarQube CI user"
+              secret: "${SPROUT_SONAR_TOKEN:-}"
           - usernamePassword:
               scope: GLOBAL
-              id: sonar-admin
-              description: "SonarQube admin; the pipeline uses it to create a short-lived analysis token per build"
-              username: "admin"
-              password: "${SONAR_ADMIN_PASSWORD}"
-          - usernamePassword:
-              scope: GLOBAL
-              id: dockerhub
+              id: registry-credentials
               description: "Docker Hub username + access token (Push stage)"
               username: "${DOCKERHUB_USER:-}"
               password: "${DOCKERHUB_TOKEN:-}"
 
 unclassified:
+  sonarGlobalConfiguration:
+    installations:
+      - name: "SonarQube"
+        serverUrl: "http://sonarqube:9000"
+        credentialsId: "sonar-token"
   location:
     url: "${JENKINS_URL:-http://localhost:8081/}"
 

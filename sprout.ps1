@@ -17,14 +17,19 @@ Set-Location $PSScriptRoot
 
 $jenkinsCompose = @('-f', 'ci/docker-compose.jenkins.yml', '--env-file', 'ci/.env')
 
-function Read-EnvFile($path) {
-  $vars = @{}
-  if (Test-Path $path) {
-    foreach ($line in Get-Content $path) {
-      if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$') { $vars[$Matches[1]] = $Matches[2].Trim() }
-    }
+function Read-CiConfiguration {
+  # Use Compose's dotenv parser so quoted passwords and literal dollar signs work.
+  # Capture the configuration; never print its credential values to the terminal.
+  $configurationText = docker compose @jenkinsCompose config --format json
+  if ($LASTEXITCODE -ne 0) { throw 'Invalid CI configuration; check ci/.env.' }
+  $configuration = $configurationText | ConvertFrom-Json
+  $jenkinsEnvironment = $configuration.services.jenkins.environment
+  return @{
+    JENKINS_PORT = $configuration.services.jenkins.ports[0].published
+    JENKINS_ADMIN_ID = $jenkinsEnvironment.JENKINS_ADMIN_ID
+    SPROUT_DB_PASSWORD = $jenkinsEnvironment.SPROUT_DB_PASSWORD
+    SONAR_PORT = $jenkinsEnvironment.SONAR_PORT
   }
-  return $vars
 }
 
 function Test-DockerEngine {
@@ -44,7 +49,7 @@ function Start-DockerEngine {
   if (-not $candidates) { throw 'Docker Desktop not found. Start it manually and rerun.' }
 
   Write-Host '>> Starting Docker Desktop...' -ForegroundColor Cyan
-  Start-Process $candidates[0]
+  Start-Process $candidates[0] -WindowStyle Hidden
   for ($i = 0; $i -lt 90; $i++) {
     if (Test-DockerEngine) { Write-Host '   Docker engine is running.'; return }
     Start-Sleep 2
@@ -74,7 +79,7 @@ function Wait-Http($name, $url, $tries = 60, $mustContain = $null) {
 if (-not (Test-Path 'ci/.env')) {
   throw 'ci/.env is missing. Copy ci/.env.example to ci/.env and fill it in first.'
 }
-$ciEnv = Read-EnvFile 'ci/.env'
+$ciEnv = Read-CiConfiguration
 $jenkinsPort = if ($ciEnv.JENKINS_PORT) { $ciEnv.JENKINS_PORT } else { '8081' }
 $sonarPort = if ($ciEnv.SONAR_PORT) { $ciEnv.SONAR_PORT } else { '9002' }
 $appPort = if ($env:APP_PORT) { $env:APP_PORT } else { '8090' }
@@ -84,22 +89,44 @@ switch ($Action) {
     Start-DockerEngine
 
     Write-Host '>> Starting Jenkins + SonarQube...' -ForegroundColor Cyan
-    docker compose @jenkinsCompose up -d
+    docker compose @jenkinsCompose up -d --build
     if ($LASTEXITCODE -ne 0) { throw 'Failed to start Jenkins/SonarQube.' }
 
     Write-Host '>> Starting the app...' -ForegroundColor Cyan
     # Use the same DB password Jenkins deploys with, and keep the image version that was last deployed.
     if ($ciEnv.SPROUT_DB_PASSWORD) { $env:POSTGRES_PASSWORD = $ciEnv.SPROUT_DB_PASSWORD }
-    # Deployed image looks like <namespace>/sprout-backend:<build>
-    $deployed = docker inspect --format '{{.Config.Image}}' sprout-backend-1 2>$null
-    if ($LASTEXITCODE -eq 0 -and $deployed -match '^(.+)/sprout-backend:(.+)$') {
-      $env:IMAGE_NAMESPACE = $Matches[1]
-      $env:IMAGE_TAG = $Matches[2]
-      Write-Host "   Using deployed build: $deployed"
-      docker compose up -d --no-build
+    $backendId = docker inspect --format '{{.Image}}' sprout-backend-1 2>$null
+    $frontendId = docker inspect --format '{{.Image}}' sprout-frontend-1 2>$null
+    $releaseBuild = docker inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' sprout-backend-1 2>$null
+    if ($backendId -and $frontendId -and $releaseBuild -and $releaseBuild -ne '<no value>') {
+      $env:BACKEND_IMAGE = $backendId
+      $env:FRONTEND_IMAGE = $frontendId
+      $env:IMAGE_TAG = $releaseBuild
+      Write-Host "   Using deployed build: $releaseBuild"
+      # Start an already deployed release without rerunning schema migrations or replacing its configuration.
+      docker compose start db backend frontend
     } else {
-      Write-Host '   No deployed build found; building images locally (Jenkins will replace them on its next build).'
-      docker compose up -d --build
+      if ($backendId) {
+        Write-Host '   Backing up the legacy database before the migration transition.'
+        docker compose start db
+        if ($LASTEXITCODE -ne 0) { throw 'Could not start the legacy database for backup.' }
+        for ($i = 0; $i -lt 30; $i++) {
+          docker compose exec -T db sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' *> $null
+          if ($LASTEXITCODE -eq 0) { break }
+          Start-Sleep 2
+        }
+        $legacyBackupName = "legacy-$([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')).dump"
+        New-Item -ItemType Directory -Force '.backups' | Out-Null
+        docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f "$1" && pg_restore --list "$1" >/dev/null' sh "/tmp/$legacyBackupName"
+        if ($LASTEXITCODE -ne 0) { throw 'Legacy database backup failed; leaving the old release intact.' }
+        $databaseId = docker compose ps -q db
+        docker cp "${databaseId}:/tmp/$legacyBackupName" (Join-Path '.backups' $legacyBackupName)
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot copy the legacy backup; leaving the old release intact.' }
+        docker compose exec -T db rm -f "/tmp/$legacyBackupName"
+        Write-Host "   Verified backup: .backups/$legacyBackupName"
+      }
+      Write-Host '   No managed release found; building images locally and applying checked schema migrations.'
+      docker compose up -d --build --wait --wait-timeout 180
     }
     if ($LASTEXITCODE -ne 0) { throw 'Failed to start the app.' }
 
@@ -116,7 +143,7 @@ switch ($Action) {
     Write-Host "Jenkins : http://localhost:$jenkinsPort  (user: $($ciEnv.JENKINS_ADMIN_ID), password in ci/.env)" -ForegroundColor Green
     Write-Host "App     : http://localhost:$appPort" -ForegroundColor Green
     Write-Host "API docs: http://localhost:$appPort/api/docs" -ForegroundColor Green
-    Write-Host "SonarQube: http://localhost:$sonarPort  (user: admin, SONAR_ADMIN_PASSWORD in ci/.env; set by the first pipeline run)" -ForegroundColor Green
+    Write-Host "SonarQube: http://localhost:$sonarPort  (configure the analysis token and webhook as described in docs/DEPLOYMENT.md)" -ForegroundColor Green
   }
 
   'stop' {

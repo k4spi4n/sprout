@@ -1,0 +1,32 @@
+# Opt-in production settings. See docs/DEPLOYMENT.md for the full release command.
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD: !reset null
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - db_credentials:/run/secrets:ro
+    restart: unless-stopped
+
+  migrate:
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE to a tested immutable image reference}
+    environment: &production-database
+      POSTGRES_PASSWORD: !reset null
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      SPROUT_ENV: production
+    volumes:
+      - db_credentials:/run/secrets:ro
+
+  backend:
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE to a tested immutable image reference}
+    environment: *production-database
+    volumes:
+      - db_credentials:/run/secrets:ro
+    restart: unless-stopped
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?set FRONTEND_IMAGE to a tested immutable image reference}
+    restart: unless-stopped
+
+volumes:
+  db_credentials:

@@ -65,3 +65,49 @@ def test_rejects_too_long_name(client):
 def test_openapi_docs_are_served_under_api_prefix(client):
     assert client.get("/api/openapi.json").status_code == 200
     assert client.get("/api/docs").status_code == 200
+
+
+def test_readiness_refuses_unmigrated_database_but_process_is_live(client):
+    from sqlalchemy import text
+    from app.database import engine
+
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM alembic_version"))
+    assert client.get("/api/health").status_code == 503
+    assert client.get("/api/live").status_code == 200
+
+
+def test_readiness_database_failure_returns_safe_503(client):
+    from sqlalchemy.exc import OperationalError
+    from app.database import get_db
+    from app.main import app
+
+    class UnavailableDatabase:
+        def execute(self, statement):
+            raise OperationalError("sensitive connection details", {}, Exception("down"))
+
+    app.dependency_overrides[get_db] = lambda: UnavailableDatabase()
+    try:
+        response = client.get("/api/health")
+        assert response.status_code == 503
+        assert response.json() == {"detail": "Database unavailable"}
+        assert client.get("/api/live").status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_adopts_real_database_schema_and_preserves_existing_plants(client):
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+    from app.database import engine
+
+    make_plant(client, name="Existing production fern")
+    with engine.begin() as connection:
+        connection.exec_driver_sql("DROP TABLE alembic_version")
+        config = Config("alembic.ini")
+        config.attributes["connection"] = connection
+        command.upgrade(config, "head")
+        command.check(config)
+        assert connection.execute(text("SELECT name FROM plants")).scalar_one() == "Existing production fern"
+    assert client.get("/api/health").status_code == 200

@@ -77,3 +77,13 @@ def test_validation_errors_pass_through_the_proxy(http):
 def test_api_docs_are_reachable(http):
     assert http.get("/api/docs").status_code == 200
     assert http.get("/api/openapi.json").json()["info"]["title"] == "Sprout API"
+
+
+def test_cache_policy_security_headers_and_missing_assets(http):
+    page = http.get("/")
+    assert page.headers["cache-control"] == "no-cache"
+    assert page.headers["x-content-type-options"] == "nosniff"
+    assert page.headers["x-frame-options"] == "DENY"
+    assert http.get("/assets/does-not-exist.js").status_code == 404
+    asset = re.search(r'src="(/assets/[^\"]+\.js)"', page.text).group(1)
+    assert "max-age=31536000" in http.get(asset).headers["cache-control"]

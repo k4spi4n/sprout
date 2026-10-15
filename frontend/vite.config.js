@@ -18,6 +18,7 @@ export default defineConfig({
       // lcov is read by SonarQube; text is printed in the Jenkins log
       reporter: ['text', 'lcov'],
       reportsDirectory: 'reports/coverage',
+      thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 },
     },
   },
 })
