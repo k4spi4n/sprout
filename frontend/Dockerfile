@@ -4,10 +4,11 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# ---- test: used by Jenkins (docker build --target test) ----
+# ---- test: used by docker-compose.test.yml (Jenkins "Unit tests" stage) ----
+# Reports (lcov for SonarQube, JUnit for Jenkins) are written to /app/reports
 FROM deps AS test
 COPY . .
-RUN npm test
+CMD ["npm", "run", "test:ci"]
 
 # ---- build ----
 FROM deps AS build

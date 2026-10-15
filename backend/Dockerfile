@@ -8,15 +8,19 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# ---- test: used by Jenkins (docker build --target test) ----
+# ---- test: used by docker-compose.test.yml (Jenkins "Unit tests" stage) ----
 FROM base AS test
 COPY requirements-dev.txt .
 RUN pip install -r requirements-dev.txt
 COPY . .
-CMD ["pytest", "-q"]
+# Reports (coverage for SonarQube, JUnit for Jenkins) are written to /app/reports
+CMD ["pytest", "-v", "--cov", "--cov-report=term", "--cov-report=xml:reports/coverage.xml", "--junitxml=reports/junit.xml"]
 
 # ---- runtime: default (last) stage ----
 FROM base AS runtime
+# Jenkins build number baked into the image; reported by /api/health and checked by the smoke test
+ARG APP_BUILD=dev
+ENV APP_BUILD=${APP_BUILD}
 RUN useradd --create-home --uid 10001 app
 COPY app ./app
 USER app

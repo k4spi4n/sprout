@@ -1,6 +1,6 @@
-# Production-style stack. Jenkins builds the images and runs:
-#   IMAGE_TAG=<build number> docker compose up -d --no-build
-# Locally you can just run: docker compose up --build
+# Production-style stack.
+#   Jenkins:  IMAGE_NAMESPACE=<dockerhub user> IMAGE_TAG=<build #> docker compose build / up -d --no-build
+#   Locally:  docker compose up --build        (images become local/sprout-*:latest)
 name: sprout
 
 services:
@@ -20,8 +20,11 @@ services:
     restart: "no"   # on-demand: start with `docker compose up -d`
 
   backend:
-    image: sprout-backend:${IMAGE_TAG:-latest}
-    build: ./backend
+    image: ${IMAGE_NAMESPACE:-local}/sprout-backend:${IMAGE_TAG:-latest}
+    build:
+      context: ./backend
+      args:
+        APP_BUILD: ${IMAGE_TAG:-local}
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sprout}:${POSTGRES_PASSWORD:-sprout}@db:5432/${POSTGRES_DB:-sprout}
     depends_on:
@@ -30,13 +33,19 @@ services:
     restart: "no"   # on-demand: start with `docker compose up -d`
 
   frontend:
-    image: sprout-frontend:${IMAGE_TAG:-latest}
+    image: ${IMAGE_NAMESPACE:-local}/sprout-frontend:${IMAGE_TAG:-latest}
     build: ./frontend
     ports:
       - "${APP_PORT:-8090}:80"
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      # Checks the whole chain: nginx -> FastAPI -> Postgres
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: "no"   # on-demand: start with `docker compose up -d`
 
 volumes:

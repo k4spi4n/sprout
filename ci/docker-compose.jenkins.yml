@@ -1,5 +1,6 @@
-# Jenkins running in Docker. Start with:
+# CI stack: Jenkins + SonarQube (+ its Postgres). Start with:
 #   docker compose -f ci/docker-compose.jenkins.yml --env-file ci/.env up -d --build
+# or simply: .\sprout.cmd
 name: sprout-jenkins
 
 services:
@@ -18,10 +19,63 @@ services:
       JENKINS_URL: http://localhost:${JENKINS_PORT:-8081}/
       SPROUT_REPO_URL: ${SPROUT_REPO_URL:?set SPROUT_REPO_URL in ci/.env}
       SPROUT_DB_PASSWORD: ${SPROUT_DB_PASSWORD:-sprout}
+      SONAR_PORT: ${SONAR_PORT:-9002}
+      SONAR_ADMIN_PASSWORD: ${SONAR_ADMIN_PASSWORD:?set SONAR_ADMIN_PASSWORD in ci/.env}
+      DOCKERHUB_USER: ${DOCKERHUB_USER:-}
+      DOCKERHUB_TOKEN: ${DOCKERHUB_TOKEN:-}
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
     restart: "no"   # on-demand: start with `docker compose up -d`
 
+  sonarqube:
+    image: sonarqube:26.8.0.126808-community
+    depends_on:
+      sonar-db:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonarqube
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: ${SONAR_DB_PASSWORD:-sonar}
+      # Skip the vm.max_map_count check (fine for Docker Desktop / dev machines)
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    ulimits:
+      nofile:
+        soft: 131072
+        hard: 131072
+      nproc: 8192
+    volumes:
+      - sonar_data:/opt/sonarqube/data
+      - sonar_extensions:/opt/sonarqube/extensions
+      - sonar_logs:/opt/sonarqube/logs
+    ports:
+      - "${SONAR_PORT:-9002}:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    restart: "no"   # on-demand: start with `docker compose up -d`
+
+  sonar-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: ${SONAR_DB_PASSWORD:-sonar}
+      POSTGRES_DB: sonarqube
+    volumes:
+      - sonar_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonar -d sonarqube"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: "no"   # on-demand: start with `docker compose up -d`
+
 volumes:
   jenkins_home:
+  sonar_data:
+  sonar_extensions:
+  sonar_logs:
+  sonar_db:

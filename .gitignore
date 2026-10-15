@@ -18,3 +18,8 @@ ci/.env
 .idea/
 .DS_Store
 Thumbs.db
+
+# Test / analysis output
+reports/
+.scannerwork/
+.coverage

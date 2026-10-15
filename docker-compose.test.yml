@@ -1,0 +1,38 @@
+# Unit-test environment (Jenkins "Unit tests" stage). Each build uses its own project name:
+#   docker compose -p sprout-test-<build> -f docker-compose.test.yml run --build backend-tests
+#   docker compose -p sprout-test-<build> -f docker-compose.test.yml run --build frontend-tests
+# Run it yourself the same way (any project name); clean up with `down -v`.
+services:
+  test-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: test
+    tmpfs:
+      - /var/lib/postgresql/data   # throwaway: lives in memory only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  backend-tests:
+    image: sprout-backend-tests:ci
+    build:
+      context: ./backend
+      target: test
+    environment:
+      # Real PostgreSQL, not SQLite
+      DATABASE_URL: postgresql+psycopg://test:test@test-db:5432/test
+    depends_on:
+      test-db:
+        condition: service_healthy
+
+  frontend-tests:
+    image: sprout-frontend-tests:ci
+    build:
+      context: ./frontend
+      target: test
+    environment:
+      CI: "true"

@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 
@@ -49,4 +50,10 @@ app.include_router(plants.router)
 @app.get("/api/health", tags=["meta"])
 def health(db: Session = Depends(get_db)):
     db.execute(text("SELECT 1"))
-    return {"status": "ok", "database": "ok", "version": app.version}
+    # APP_BUILD is the Jenkins build number baked into the deployment; the smoke test checks it.
+    return {
+        "status": "ok",
+        "database": "ok",
+        "version": app.version,
+        "build": os.getenv("APP_BUILD", "dev"),
+    }

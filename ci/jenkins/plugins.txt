@@ -6,3 +6,4 @@ git
 credentials-binding
 timestamper
 ws-cleanup
+junit

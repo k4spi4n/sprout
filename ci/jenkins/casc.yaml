@@ -10,6 +10,17 @@ jenkins:
   authorizationStrategy:
     loggedInUsersCanDoAnything:
       allowAnonymousRead: false
+  globalNodeProperties:
+    - envVars:
+        env:
+          # SonarQube runs next to Jenkins (ci/docker-compose.jenkins.yml)
+          - key: SONAR_HOST_URL
+            value: "http://sonarqube:9000"
+          - key: SONAR_PUBLIC_URL
+            value: "http://localhost:${SONAR_PORT:-9002}"
+          # Docker Hub namespace for images. Empty = images stay local and the Push stage is skipped.
+          - key: DOCKERHUB_USER
+            value: "${DOCKERHUB_USER:-}"
 
 credentials:
   system:
@@ -20,6 +31,18 @@ credentials:
               id: sprout-db-password
               description: "Postgres password used by the deployed Sprout stack"
               secret: "${SPROUT_DB_PASSWORD:-sprout}"
+          - usernamePassword:
+              scope: GLOBAL
+              id: sonar-admin
+              description: "SonarQube admin; the pipeline uses it to create a short-lived analysis token per build"
+              username: "admin"
+              password: "${SONAR_ADMIN_PASSWORD}"
+          - usernamePassword:
+              scope: GLOBAL
+              id: dockerhub
+              description: "Docker Hub username + access token (Push stage)"
+              username: "${DOCKERHUB_USER:-}"
+              password: "${DOCKERHUB_TOKEN:-}"
 
 unclassified:
   location:
@@ -32,7 +55,7 @@ security:
 jobs:
   - script: >
       pipelineJob('sprout') {
-        description('Test, build and deploy Sprout (React + FastAPI + PostgreSQL) from the main branch on GitHub.')
+        description('Test, analyse (SonarQube), build, push (Docker Hub) and deploy Sprout from the main branch on GitHub.')
         properties {
           pipelineTriggers {
             triggers {
