@@ -1,9 +1,11 @@
 # ---- base: runtime dependencies ----
-FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 AS base
+FROM python:3.12-slim@sha256:191083cdf6c7bda8c76158983163ead5d5cf7b77cf3033e805bb0f5296f51b4b AS base
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
+# CVE-2026-124851: patched libzstd1 is not in the base image yet; drop this once it is.
+RUN apt-get update     && apt-get install -y --no-install-recommends --only-upgrade libzstd1     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --require-hashes -r requirements.txt
