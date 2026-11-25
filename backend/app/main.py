@@ -35,7 +35,11 @@ def live():
     return {"status": "ok"}
 
 
-@app.get("/api/health", tags=["meta"])
+@app.get(
+    "/api/health",
+    tags=["meta"],
+    responses={503: {"description": "Database unavailable or migrations pending"}},
+)
 def health(db: DbSession):
     try:
         db.execute(text("SELECT 1"))
