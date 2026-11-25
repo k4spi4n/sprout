@@ -16,7 +16,7 @@ COPY . .
 RUN npm run build
 
 # ---- runtime: default (last) stage ----
-FROM nginx:stable-alpine@sha256:ed84151ed2d47ef93c0939eb9b9754c6990db6092cd2081e11988a47a83d47ea AS runtime
+FROM nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a AS runtime
 ARG APP_BUILD=dev
 ARG APP_REVISION=unknown
 LABEL org.opencontainers.image.title="Sprout frontend" \
